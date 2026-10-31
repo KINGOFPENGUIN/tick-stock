@@ -59,7 +59,6 @@ import {
   type BrandIconProps,
 } from './BrandIcons'
 import { Logo } from './Logo'
-import { Logo } from './Logo'
 import { MarketSwitcher } from './MarketSwitcher'
 import { api, type CapabilityMatrix, type IndexQuote } from '@/lib/api'
 import { cn } from '@/lib/cn'
