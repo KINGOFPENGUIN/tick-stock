@@ -31,6 +31,7 @@ from app.api import (
     kline,
     lab,
     lots,
+    market,
     market_recap,
     mining,
     monitor_rules,
@@ -667,6 +668,7 @@ app.include_router(ext_pages.router)
 app.include_router(task_registry.router)
 app.include_router(financials.router)
 app.include_router(stock_analysis.router)
+app.include_router(market.router)
 app.include_router(market_recap.router)
 app.include_router(settings_api.router)
 app.include_router(upgrade_guard_api.router)
