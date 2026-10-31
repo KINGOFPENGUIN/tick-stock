@@ -59,7 +59,6 @@ import {
   type BrandIconProps,
 } from './BrandIcons'
 import { Logo } from './Logo'
-import { MarketSwitcher } from './MarketSwitcher'
 import { api, type CapabilityMatrix, type IndexQuote } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { useIsDesktop } from '@/lib/useMediaQuery'
@@ -805,13 +804,7 @@ export function Layout() {
             </div>
           )}
         </div>
-        {/* 市場切換 — A股 / 美股 */}
-        {!railMode && (
-          <div className="px-3 pt-3 pb-1 shrink-0">
-            <MarketSwitcher />
-          </div>
-        )}
-
+        
         <nav className="tf-nav-scroll flex-1 min-h-0 overflow-y-auto px-2 py-3 space-y-0.5">
           {visibleNavItems.map(({ to, label, icon: Icon, badge, arch }) => {
             // 「自选」项 — 开启分组侧栏且未整体收起时, 渲染为可展开父项 + 二级分组
