@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
+import { MarketProvider } from './markets/MarketContext'
 import { QueryClient, QueryCache } from '@tanstack/react-query'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { initializeFrontendExtensions } from './extensions/bootstrap'
@@ -87,7 +88,9 @@ async function bootstrap() {
           dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
         }}
       >
-        <RouterProvider router={router} />
+        <MarketProvider>
+          <RouterProvider router={router} />
+        </MarketProvider>
       </PersistQueryClientProvider>
     </React.StrictMode>,
   )
