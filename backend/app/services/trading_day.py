@@ -29,7 +29,8 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, time as dt_time
 
-from app.market_time import CN_TZ, cn_now
+from app.market_time import CN_TZ, cn_now, us_now
+from app.markets.calendar_us import is_us_trading_day as calendar_is_us_trading_day
 
 # tickflow 戳探针的开盘缓冲窗: 此时刻之前戳仍是上一交易日属正常 (集合竞价),
 # 不据此判休市。周一实测竞价戳翻新时机后可收紧。仅上午首个窗口需要。
@@ -79,11 +80,7 @@ def _probe_fuyao(now: datetime) -> bool | None:
 
 
 def _probe_tickflow(now: datetime) -> bool | None:
-    """tickflow 行情时间戳: max(timestamp) 日期 == 今天 ⇔ 交易日。
-
-    戳停在上一交易日: 开盘缓冲窗内 → None (可能是竞价未翻新), 窗后 → False。
-    无实时权限 / 网络失败 / 无有效戳 → None。
-    """
+    """tickflow 行情时间戳: max(timestamp) 日期 == 今天 ⇔ 交易日。"""
     try:
         from app.tickflow.client import get_client
 
@@ -103,19 +100,12 @@ def _probe_tickflow(now: datetime) -> bool | None:
 
 
 def is_trading_day(now: datetime | None = None) -> bool | None:
-    """今天是否 A 股交易日。True=交易日, False=确定休市, None=未知 (维持周几近似)。
-
-    周末零成本直判; 工作日走探测链 (fuyao 日历 → tickflow 时间戳),
-    结论按 TTL 缓存。线程安全: 实时行情与分钟增量两个线程共用。
-    """
+    """今天是否 A 股交易日。True=交易日, False=确定休市, None=未知 (维持周几近似)。"""
     now = now or cn_now()
     if now.weekday() >= 5:
         return False
 
     with _CACHE_LOCK:
-        # 「未知」(None) 也是一个结论, 同样按 TTL 缓存 —— 它正是 _TTL_UNKNOWN_S 要
-        # 挡住的场景 (未配 fuyao 且 tickflow 不可用时, 轮询每拍都会重打一次探测)。
-        # _CACHE.day 只在探测写回时设置, 因此「当天已探过」用它判定即可。
         if (
             _CACHE.day == now.date()
             and (time.monotonic() - _CACHE.probed_at) < _ttl_of(_CACHE.verdict)
@@ -131,6 +121,29 @@ def is_trading_day(now: datetime | None = None) -> bool | None:
         _CACHE.verdict = verdict
         _CACHE.probed_at = time.monotonic()
     return verdict
+
+
+def is_us_trading_day(now: datetime | None = None) -> bool:
+    """Return whether today is a US equity trading day.
+
+    Uses the dependency-free baseline calendar in app.markets.calendar_us.
+    """
+    now = now or us_now()
+    return calendar_is_us_trading_day(now.date())
+
+
+def is_trading_day_for_market(market: str, now: datetime | None = None) -> bool | None:
+    """Return trading-day status for CN or US.
+
+    CN keeps the existing probe semantics and may return None when unknown.
+    US uses the local calendar and always returns a boolean.
+    """
+    market = market.upper()
+    if market == "CN":
+        return is_trading_day(now)
+    if market == "US":
+        return is_us_trading_day(now)
+    raise ValueError(f"Unsupported market: {market}")
 
 
 def _ttl_of(verdict: bool | None) -> float:
