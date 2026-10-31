@@ -1,14 +1,15 @@
-"""A股市场时间工具 — 固定北京时间 (UTC+8, 无夏令时)。
+"""Market time utilities.
 
-服务器/容器本地时区不可靠 (python:slim 镜像默认 UTC), 交易时段判断、
-实时行情落盘日期等必须显式使用北京时间, 否则 Docker 部署时轮询窗口
-与真实交易时段完全错开 (北京 9:15-15:05 = UTC 1:15-7:05)。
+CN market uses fixed Beijing time (UTC+8, no DST).
+US market uses America/New_York, including DST.
 """
 from __future__ import annotations
 
 from datetime import date, datetime, time as dt_time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 CN_TZ = timezone(timedelta(hours=8))
+US_TZ = ZoneInfo("America/New_York")
 
 # A 股交易时段 (北京时间): 上午 9:30-11:30 (120 分钟) + 下午 13:00-15:00 (120 分钟) = 240 分钟
 _TRADING_TOTAL_MINUTES = 240
@@ -16,6 +17,12 @@ _MORNING_START = dt_time(9, 30)
 _MORNING_END = dt_time(11, 30)
 _AFTERNOON_START = dt_time(13, 0)
 _AFTERNOON_END = dt_time(15, 0)
+
+# US regular session (Eastern Time)
+_US_PREMARKET_START = dt_time(4, 0)
+_US_REGULAR_START = dt_time(9, 30)
+_US_REGULAR_END = dt_time(16, 0)
+_US_AFTERHOURS_END = dt_time(20, 0)
 
 
 def cn_now() -> datetime:
@@ -28,6 +35,16 @@ def cn_today() -> date:
     return datetime.now(CN_TZ).date()
 
 
+def us_now() -> datetime:
+    """当前美东时间 (带时区)。"""
+    return datetime.now(US_TZ)
+
+
+def us_today() -> date:
+    """当前美东日期。"""
+    return datetime.now(US_TZ).date()
+
+
 def in_continuous_session(now: datetime | None = None) -> bool:
     """A股连续竞价时段 (北京时间): 9:30-11:30 / 13:00-15:00, 仅工作日。"""
     now = now or cn_now()
@@ -35,6 +52,34 @@ def in_continuous_session(now: datetime | None = None) -> bool:
         _MORNING_START <= now.time() <= _MORNING_END
         or _AFTERNOON_START <= now.time() <= _AFTERNOON_END
     )
+
+
+def us_session(now: datetime | None = None) -> str:
+    """Return the current US session by Eastern Time.
+
+    Returns one of: premarket, regular, afterhours, closed.
+    Trading-day validation is handled by services.trading_day.
+    """
+    now = now or us_now()
+    t = now.time()
+
+    if _US_PREMARKET_START <= t < _US_REGULAR_START:
+        return "premarket"
+    if _US_REGULAR_START <= t < _US_REGULAR_END:
+        return "regular"
+    if _US_REGULAR_END <= t < _US_AFTERHOURS_END:
+        return "afterhours"
+    return "closed"
+
+
+def market_now(market: str = "CN") -> datetime:
+    """Return current time for a supported market."""
+    market = market.upper()
+    if market == "CN":
+        return cn_now()
+    if market == "US":
+        return us_now()
+    raise ValueError(f"Unsupported market: {market}")
 
 
 def trading_minutes_elapsed_from_dt(dt: datetime) -> float:
@@ -59,27 +104,12 @@ def trading_minutes_elapsed_from_dt(dt: datetime) -> float:
 
 
 def trading_minutes_elapsed() -> float:
-    """当前已交易分钟数 (基于服务端北京时间)。
-
-    量比折算的兜底: 当行情 timestamp 缺失时用服务端时间。
-    优先使用 trading_minutes_elapsed_from_ts (行情真实时间, 更准)。
-    """
+    """当前已交易分钟数 (基于服务端北京时间)。"""
     return trading_minutes_elapsed_from_dt(cn_now())
 
 
 def trading_minutes_elapsed_from_ts(ts_ms: int | float | None) -> float:
-    """从行情时间戳(毫秒)计算当日已交易分钟数。
-
-    优先使用此函数: 行情 timestamp 是真实成交时间, 比服务端时间更准
-    (服务端时间含网络/限流延迟)。
-
-    Args:
-        ts_ms: 毫秒级 Unix 时间戳 (TickFlow SDK quote.timestamp / kline.timestamp)
-
-    Returns:
-        已交易分钟数 (0~240)。timestamp 为 None/无效时返回 240 (视作全天,
-        避免量比被折算成 0)。
-    """
+    """从行情时间戳(毫秒)计算当日已交易分钟数。"""
     if not ts_ms:
         return float(_TRADING_TOTAL_MINUTES)
     try:
@@ -87,4 +117,3 @@ def trading_minutes_elapsed_from_ts(ts_ms: int | float | None) -> float:
     except (ValueError, TypeError, OSError):
         return float(_TRADING_TOTAL_MINUTES)
     return trading_minutes_elapsed_from_dt(dt)
-
